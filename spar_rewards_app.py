@@ -39,7 +39,6 @@ init_session_state()
 # =====================================================
 
 def login_form():
-    # Remove the duplicate key issue by using a unique key
     st.markdown("""
     <style>
     /* Hide default Streamlit elements only on login page */
@@ -124,7 +123,6 @@ def login_form():
             <p>Enter your password to access the dashboard</p>
     """, unsafe_allow_html=True)
     
-    # Use a unique key for the password input
     password = st.text_input("", placeholder="Enter password", type="password", key="login_password_input", label_visibility="collapsed")
     
     if st.button("Access Dashboard", key="login_button", use_container_width=True):
@@ -387,6 +385,9 @@ def calculate_campaign_impact(rfm):
         'total_customers_targeted': len(rfm[rfm['priority'].isin(['High', 'Medium'])]),
         'potential_revenue_at_risk': rfm[rfm['segment'] == '⚠️ At Risk']['monetary'].sum(),
         'estimated_retention_value': rfm[rfm['segment'] == '⚠️ At Risk']['monetary'].sum() * 0.3,
+        'high_value_customers': len(rfm[rfm['clv_segment'] == 'Platinum']) if 'clv_segment' in rfm.columns else 0,
+        'avg_clv': rfm['clv'].mean() if 'clv' in rfm.columns else 0,
+        'total_opportunity': rfm[rfm['churn_risk'] == 'High Risk']['monetary'].sum() if 'churn_risk' in rfm.columns else 0
     }
 
 # =====================================================
@@ -394,12 +395,30 @@ def calculate_campaign_impact(rfm):
 # =====================================================
 def generate_alerts(rfm):
     alerts = []
+    
+    # Alert 1: High-value customers at risk
+    if 'clv' in rfm.columns and 'churn_risk' in rfm.columns:
+        high_risk_high_value = rfm[(rfm['churn_risk'] == 'High Risk') & 
+                                    (rfm['clv'] > rfm['clv'].quantile(0.75))]
+        if len(high_risk_high_value) > 0:
+            alerts.append(f"🚨 CRITICAL: {len(high_risk_high_value)} high-value customers are at risk of churning!")
+    
+    # Alert 2: At risk customers count
     at_risk = len(rfm[rfm['segment'] == '⚠️ At Risk'])
     if at_risk > 50:
-        alerts.append(f"⚠️ WARNING: {at_risk} customers are at risk of churning!")
+        alerts.append(f"⚠️ WARNING: {at_risk} customers are at risk. Immediate action recommended!")
+    
+    # Alert 3: Champions growth opportunity
     champions = len(rfm[rfm['segment'] == '👑 Champions'])
     if champions < 10:
-        alerts.append(f"💡 OPPORTUNITY: Only {champions} champions. Grow this segment!")
+        alerts.append(f"💡 OPPORTUNITY: Only {champions} champions. Focus on loyalty program to grow this segment.")
+    
+    # Alert 4: Revenue concentration risk
+    top_10_revenue = rfm.nlargest(10, 'monetary')['monetary'].sum()
+    total_revenue = rfm['monetary'].sum()
+    if total_revenue > 0 and (top_10_revenue / total_revenue) > 0.5:
+        alerts.append(f"⚠️ RISK: Top 10 customers represent {top_10_revenue/total_revenue*100:.1f}% of revenue.")
+    
     return alerts
 
 # =====================================================
@@ -409,9 +428,11 @@ def calculate_benchmarks(rfm):
     return {
         'Total Customers': len(rfm),
         'Avg Customer Value': rfm['monetary'].mean(),
+        'Avg Frequency': rfm['frequency'].mean(),
+        'Avg Recency (days)': rfm['recency'].mean(),
         'Retention Rate': len(rfm[rfm['frequency'] > 1]) / len(rfm) * 100 if len(rfm) > 0 else 0,
         'Churn Rate': len(rfm[rfm['segment'] == '💔 Churned']) / len(rfm) * 100 if len(rfm) > 0 else 0,
-        'Active Rate': len(rfm[rfm['recency'] <= 30]) / len(rfm) * 100 if len(rfm) > 0 else 0,
+        'Active Rate (30 days)': len(rfm[rfm['recency'] <= 30]) / len(rfm) * 100 if len(rfm) > 0 else 0,
         'Avg CLV': rfm['clv'].mean() if 'clv' in rfm.columns else 0
     }
 
@@ -499,6 +520,8 @@ def segment_customers(rfm):
     rfm['risk_score'] = 0
     rfm.loc[rfm['segment'] == '⚠️ At Risk', 'risk_score'] = 70
     rfm.loc[rfm['segment'] == '💔 Churned', 'risk_score'] = 90
+    rfm.loc[rfm['segment'] == '🆕 One-Time', 'risk_score'] = 50
+    rfm.loc[rfm['recency'] > 45, 'risk_score'] += 20
     return rfm
 
 # =====================================================
@@ -553,7 +576,8 @@ def get_data_response(question, rfm, df):
         return f"💰 **Total Revenue:** ${rfm['monetary'].sum():,.2f}"
     elif 'at risk' in q:
         at_risk = len(rfm[rfm['segment'] == '⚠️ At Risk'])
-        return f"⚠️ **At Risk Customers:** {at_risk} members need attention"
+        churned = len(rfm[rfm['segment'] == '💔 Churned'])
+        return f"⚠️ **At Risk Customers:** {at_risk} | 💔 **Churned:** {churned}"
     return None
 
 # =====================================================
@@ -591,7 +615,6 @@ with st.sidebar:
 if not st.session_state.authenticated:
     login_form()
 elif not file:
-    # Welcome screen
     st.markdown("""
     <div class="welcome-screen">
         <h2 style="color: #E31837;">🎯 Welcome to SPAR Rewards Intelligence Hub</h2>
@@ -614,7 +637,6 @@ elif not file:
         st.dataframe(sample_df)
 
 elif file:
-    # Load and process data
     df = pd.read_csv(file)
     df = clean_data(df)
     
@@ -622,7 +644,7 @@ elif file:
         st.error("❌ No valid data found. Please check your file format.")
         st.stop()
     
-    # Date slicer
+    # DATE SLICER
     st.markdown('<div class="filter-section">', unsafe_allow_html=True)
     st.markdown("### 📅 Date Slicer")
     
@@ -641,7 +663,7 @@ elif file:
     
     st.markdown('</div>', unsafe_allow_html=True)
     
-    # Apply filters
+    # Apply date filters
     filtered_df = df.copy()
     if selected_years:
         filtered_df = filtered_df[filtered_df['year'].isin(selected_years)]
@@ -654,7 +676,7 @@ elif file:
         st.warning("⚠️ No data available for the selected date range.")
         st.stop()
     
-    # Calculate metrics
+    # Calculate all metrics
     rfm = calculate_rfm(filtered_df)
     rfm = segment_customers(rfm)
     rfm = generate_actions(rfm)
@@ -662,12 +684,13 @@ elif file:
     rfm = calculate_churn_probability(rfm)
     rfm = rfm.reset_index()
     
+    # Time insights
     hourly_revenue, daily_patterns = add_time_insights(filtered_df)
     campaign_metrics = calculate_campaign_impact(rfm)
     alerts = generate_alerts(rfm)
     benchmarks = calculate_benchmarks(rfm)
     
-    # KPI Cards
+    # KPI CARDS
     col1, col2, col3, col4 = st.columns(4)
     
     def card(title, value, icon=""):
@@ -686,11 +709,11 @@ elif file:
         card("Avg. CLV", f"${rfm['clv'].mean():,.0f}", "💎 ")
     with col4:
         at_risk_count = len(rfm[rfm['segment'].isin(['⚠️ At Risk', '💔 Churned'])])
-        card("At Risk", f"{at_risk_count}", "⚠️ ")
+        card("At Risk / Churned", f"{at_risk_count}", "⚠️ ")
     
     st.markdown("<br>", unsafe_allow_html=True)
     
-    # Customer Filters
+    # CUSTOMER FILTERS
     st.markdown('<div class="filter-section">', unsafe_allow_html=True)
     st.markdown("### 🔍 Customer Filters")
     
@@ -706,7 +729,7 @@ elif file:
     
     st.markdown('</div>', unsafe_allow_html=True)
     
-    # Apply customer filters
+    # Apply filters
     filtered_customers = rfm.copy()
     if segment_filter:
         filtered_customers = filtered_customers[filtered_customers['segment'].isin(segment_filter)]
@@ -717,7 +740,7 @@ elif file:
     if age_filter:
         filtered_customers = filtered_customers[filtered_customers['age_group'].isin(age_filter)]
     
-    # Charts
+    # CHARTS SECTION
     col1, col2 = st.columns(2)
     
     with col1:
@@ -729,6 +752,7 @@ elif file:
                      color_discrete_sequence=[SPAR_RED, SPAR_GREEN, '#FFB6C1', '#90EE90', '#FFA07A', '#D3D3D3'],
                      hole=0.3)
         fig.update_layout(height=400)
+        fig.update_traces(textposition='inside', textinfo='percent+label')
         st.plotly_chart(fig, use_container_width=True)
         st.markdown('</div>', unsafe_allow_html=True)
     
@@ -743,20 +767,21 @@ elif file:
         st.plotly_chart(fig, use_container_width=True)
         st.markdown('</div>', unsafe_allow_html=True)
     
-    # Intelligence Hub
+    # INTELLIGENCE HUB WITH 5 TABS (Including Benchmarks)
     st.markdown("### 🧠 Intelligence Hub")
     
-    tab1, tab2, tab3, tab4 = st.tabs(["📊 CLV & Churn", "⏰ Time Patterns", "🎯 Campaign ROI", "🚨 Alerts"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["📊 CLV & Churn", "⏰ Time Patterns", "🎯 Campaign ROI", "🚨 Alerts", "📈 Benchmarks"])
     
     with tab1:
         col1, col2 = st.columns(2)
         with col1:
-            fig = px.histogram(filtered_customers, x='clv', nbins=30, title="CLV Distribution",
+            fig = px.histogram(filtered_customers, x='clv', nbins=30, title="Customer Lifetime Value Distribution",
                               color_discrete_sequence=[SPAR_GREEN])
             fig.update_layout(height=400)
             st.plotly_chart(fig, use_container_width=True)
         with col2:
-            st.dataframe(filtered_customers.groupby('segment')['churn_risk'].value_counts().unstack().fillna(0), use_container_width=True)
+            churn_by_segment = filtered_customers.groupby('segment')['churn_risk'].value_counts().unstack().fillna(0)
+            st.dataframe(churn_by_segment, use_container_width=True)
     
     with tab2:
         col1, col2 = st.columns(2)
@@ -779,17 +804,40 @@ elif file:
             st.metric("At-Risk Revenue", f"${campaign_metrics['potential_revenue_at_risk']:,.0f}")
         with col3:
             st.metric("Est. Retention Value", f"${campaign_metrics['estimated_retention_value']:,.0f}")
+        st.progress(0.3, text="Campaign Progress: 30% towards retention goal")
     
     with tab4:
         for alert in alerts:
-            if "WARNING" in alert:
+            if "CRITICAL" in alert:
+                st.error(alert)
+            elif "WARNING" in alert:
                 st.warning(alert)
             else:
                 st.info(alert)
         if not alerts:
-            st.success("✅ No active alerts!")
+            st.success("✅ No active alerts. All metrics are within normal ranges!")
     
-    # Action Center
+    with tab5:
+        col1, col2 = st.columns(2)
+        with col1:
+            for key, value in list(benchmarks.items())[:4]:
+                if 'Rate' in key or 'Avg' in key:
+                    st.metric(key, f"{value:.1f}" if isinstance(value, float) else f"{value:,}")
+                else:
+                    st.metric(key, f"${value:,.0f}" if 'Value' in key or 'CLV' in key else f"{value:,.0f}")
+        
+        with col2:
+            radar_data = dict(
+                r=[benchmarks['Retention Rate'], 100 - benchmarks['Churn Rate'], 
+                   benchmarks['Active Rate (30 days)'], 
+                   min(100, benchmarks['Avg CLV'] / 1000 * 100)],
+                theta=['Retention', 'Non-Churn', 'Active Rate', 'CLV Index']
+            )
+            fig = go.Figure(data=go.Scatterpolar(radar_data, fill='toself'))
+            fig.update_layout(polar=dict(radialaxis=dict(visible=True)), height=400, showlegend=False)
+            st.plotly_chart(fig, use_container_width=True)
+    
+    # ACTION CENTER
     st.markdown("### 🎯 Action Center")
     
     high_priority = filtered_customers[filtered_customers['priority'] == 'High'].head(5)
@@ -799,81 +847,96 @@ elif file:
     
     with col1:
         st.markdown('<div class="card">', unsafe_allow_html=True)
-        st.markdown(f"#### 🔴 High Priority ({len(filtered_customers[filtered_customers['priority']=='High'])})")
+        st.markdown(f"#### 🔴 High Priority Actions ({len(filtered_customers[filtered_customers['priority']=='High'])})")
         for idx, row in high_priority.iterrows():
             st.markdown(f"""
             <div class="action-card">
                 <h4>{row['recommended_action']}</h4>
-                <p>Member: {row['member_number']} | ${row['monetary']:,.0f} | {row['recency']} days ago</p>
+                <p>👤 Member: {row['member_number']} | 💰 ${row['monetary']:,.0f} | ⏰ {row['recency']} days ago | 🎂 {row['age_group']} | 📊 {row['churn_risk']}</p>
             </div>
             """, unsafe_allow_html=True)
         if high_priority.empty:
-            st.info("No high priority actions")
+            st.info("No high priority actions at this time")
         st.markdown('</div>', unsafe_allow_html=True)
     
     with col2:
         st.markdown('<div class="card">', unsafe_allow_html=True)
-        st.markdown(f"#### 🟡 Medium Priority ({len(filtered_customers[filtered_customers['priority']=='Medium'])})")
+        st.markdown(f"#### 🟡 Medium Priority Actions ({len(filtered_customers[filtered_customers['priority']=='Medium'])})")
         for idx, row in medium_priority.iterrows():
             st.markdown(f"""
             <div class="action-card" style="background: linear-gradient(135deg, {SPAR_GREEN} 0%, {SPAR_LIGHT_GREEN} 100%);">
                 <h4>{row['recommended_action']}</h4>
-                <p>Member: {row['member_number']} | ${row['monetary']:,.0f} | {row['segment']}</p>
+                <p>👤 Member: {row['member_number']} | 💰 ${row['monetary']:,.0f} | ⭐ {row['segment']} | 🎂 {row['age_group']}</p>
             </div>
             """, unsafe_allow_html=True)
         if medium_priority.empty:
-            st.info("No medium priority actions")
+            st.info("No medium priority actions at this time")
         st.markdown('</div>', unsafe_allow_html=True)
     
-    # Customer Table
+    # CUSTOMER INSIGHTS TABLE
     st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.subheader("📋 Customer Insights")
+    st.subheader("📋 Customer Insights Dashboard")
     
     display_cols = ['member_number', 'segment', 'age_group', 'clv_segment', 'churn_risk', 
-                   'recency', 'frequency', 'monetary', 'priority', 'recommended_action']
+                   'recency', 'frequency', 'monetary', 'avg_basket', 'risk_score', 'priority', 'recommended_action']
     
     display_df = filtered_customers[display_cols].copy()
     display_df['monetary'] = display_df['monetary'].apply(lambda x: f"${x:,.2f}")
+    display_df['avg_basket'] = display_df['avg_basket'].apply(lambda x: f"${x:,.2f}")
     display_df['recency'] = display_df['recency'].apply(lambda x: f"{x} days")
     
     st.dataframe(display_df, use_container_width=True, height=400)
     st.markdown('</div>', unsafe_allow_html=True)
     
-    # Export
+    # EXPORT SECTION
     st.markdown("---")
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
     
     with col1:
         csv = filtered_customers[display_cols].to_csv(index=False)
-        st.download_button("📥 Download Data (CSV)", data=csv,
+        st.download_button("📥 Download Filtered Data (CSV)", data=csv,
                           file_name=f"spar_analysis_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
                           mime="text/csv", use_container_width=True)
     
     with col2:
-        high_csv = filtered_customers[filtered_customers['priority'] == 'High'][['member_number', 'monetary', 'recommended_action']].to_csv(index=False)
-        st.download_button("🚨 Export High Priority", data=high_csv,
-                          file_name="high_priority_customers.csv", mime="text/csv", use_container_width=True)
+        high_priority_export = filtered_customers[filtered_customers['priority'] == 'High'][['member_number', 'monetary', 'recommended_action', 'churn_risk']]
+        if not high_priority_export.empty:
+            high_csv = high_priority_export.to_csv(index=False)
+            st.download_button("🚨 Export High Priority List", data=high_csv,
+                              file_name="high_priority_customers.csv", mime="text/csv", use_container_width=True)
     
-    # AI Assistant in Sidebar
+    with col3:
+        st.markdown(f"""
+        <div style="background-color: {SPAR_WHITE}; padding: 10px; border-radius: 8px; text-align: center;">
+            <small>
+            📊 Summary<br>
+            Total: {len(filtered_customers):,} customers<br>
+            Revenue: ${filtered_customers['monetary'].sum():,.0f}<br>
+            Avg CLV: ${filtered_customers['clv'].mean():,.0f}
+            </small>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # AI ASSISTANT IN SIDEBAR
     with st.sidebar:
         st.markdown("---")
         st.markdown("### 🤖 SPAR AI Assistant")
         
         if "ai_messages" not in st.session_state:
-            st.session_state.ai_messages = [{"role": "assistant", "content": "👋 Ask me about SPAR Rewards or your data!"}]
+            st.session_state.ai_messages = [{"role": "assistant", "content": "👋 Hi! I'm your SPAR Rewards AI assistant. Ask me about SPAR Rewards or your data insights!"}]
         
-        for msg in st.session_state.ai_messages[-3:]:
+        for msg in st.session_state.ai_messages[-5:]:
             with st.chat_message(msg["role"]):
                 st.markdown(msg["content"])
         
-        if user_question := st.chat_input("Ask me...", key="chat_input"):
+        if user_question := st.chat_input("Ask me anything...", key="chat_input"):
             st.session_state.ai_messages.append({"role": "user", "content": user_question})
             
             response = get_spar_info_response(user_question)
-            if not response:
+            if not response and 'rfm' in locals():
                 response = get_data_response(user_question, rfm, filtered_df)
             if not response:
-                response = "Ask about SPAR Rewards, customer segments, revenue, or at-risk customers!"
+                response = "I can help with SPAR Rewards info or analyze your customer data! Try asking about segments, revenue, or how to join SPAR Rewards."
             
             st.session_state.ai_messages.append({"role": "assistant", "content": response})
             st.rerun()
@@ -883,7 +946,8 @@ st.markdown("---")
 st.markdown(f"""
 <div style="text-align: center; padding: 20px;">
     <p style="color: #999; font-size: 12px;">
-    SPAR Rewards Intelligence Hub | © 2024 SPAR Zimbabwe
+    SPAR Rewards Intelligence Hub | © 2024 SPAR Zimbabwe | 
+    <a href="https://www.spar.co.zw/rewards" target="_blank" style="color: {SPAR_RED};">Official Website</a>
     </p>
 </div>
 """, unsafe_allow_html=True)

@@ -1455,7 +1455,7 @@ else:
     st.markdown(f"""
     <div style="text-align: center; padding: 20px;">
         <p style="color: #999; font-size: 12px;">
-        SPAR Rewards Intelligence Hub | © 2024 SPAR Zimbabwe | 
+        SPAR Rewards Intelligence Hub | © 2026 SPAR Zimbabwe | 
         <a href="https://www.spar.co.zw/rewards" target="_blank" style="color: {SPAR_RED};">Official Website</a>
         </p>
     </div>

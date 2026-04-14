@@ -459,6 +459,9 @@ def clean_data(df):
     df['month'] = df['redemption_date'].dt.month
     df['day'] = df['redemption_date'].dt.day
     
+    # Convert day to integer (fix for float values)
+    df['day'] = df['day'].astype('Int64')
+    
     df = df[df['basket_value'] > 0]
     df = df[df['member_number'].notna()]
     df = df[df['redemption_date'].notna()]
@@ -620,6 +623,16 @@ def safe_percent_format(value):
     except:
         return "0%"
 
+def safe_day_format(day):
+    """Safely format day values for display"""
+    try:
+        if pd.isna(day) or day is None:
+            return "01"
+        # Convert to int first, then format
+        return f"{int(float(day)):02d}"
+    except:
+        return "01"
+
 # =====================================================
 # AI ASSISTANT KNOWLEDGE BASE
 # =====================================================
@@ -721,15 +734,23 @@ else:
         col1, col2, col3 = st.columns(3)
         with col1:
             available_years = sorted(df['year'].unique(), reverse=True)
+            # Convert to int and filter out NaN
+            available_years = [int(y) for y in available_years if pd.notna(y)]
             selected_years = st.multiselect("Select Year(s)", options=available_years, default=available_years if len(available_years) <= 3 else [available_years[0]], key="year_select")
+        
         with col2:
             months = {1: "January", 2: "February", 3: "March", 4: "April", 5: "May", 6: "June",
                       7: "July", 8: "August", 9: "September", 10: "October", 11: "November", 12: "December"}
             available_months = sorted(df['month'].unique())
+            # Convert to int and filter out NaN
+            available_months = [int(m) for m in available_months if pd.notna(m)]
             selected_months = st.multiselect("Select Month(s)", options=available_months, default=available_months, format_func=lambda x: months.get(x, str(x)), key="month_select")
+        
         with col3:
             available_days = sorted(df['day'].unique())
-            selected_days = st.multiselect("Select Day(s)", options=available_days, default=available_days, format_func=lambda x: f"{x:02d}", key="day_select")
+            # Convert to int and filter out NaN
+            available_days = [int(d) for d in available_days if pd.notna(d)]
+            selected_days = st.multiselect("Select Day(s)", options=available_days, default=available_days, format_func=safe_day_format, key="day_select")
         
         st.markdown('</div>', unsafe_allow_html=True)
         

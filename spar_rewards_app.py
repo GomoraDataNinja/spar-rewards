@@ -501,6 +501,10 @@ def segment_customers(rfm):
     - Adds 'Warming' stage (30-60 days)
     - 'At Risk' for 60-90 days OR high churn_score
     """
+    # Ensure churn_score exists
+    if 'churn_score' not in rfm.columns:
+        rfm['churn_score'] = 0
+    
     conditions = [
         # Champions: High RFM scores
         (rfm['r_score'] >= 3) & (rfm['f_score'] >= 3) & (rfm['m_score'] >= 3),
@@ -515,10 +519,10 @@ def segment_customers(rfm):
         (rfm['frequency'] == 1),
         
         # ⚠️ WARMING: Early warning signs (30-60 days inactive) OR medium churn risk
-        ((rfm['recency'] > 30) & (rfm['recency'] <= 60)) | (rfm.get('churn_score', 0) > 0.4) & (rfm.get('churn_score', 0) <= 0.6),
+        ((rfm['recency'] > 30) & (rfm['recency'] <= 60)) | ((rfm['churn_score'] > 0.4) & (rfm['churn_score'] <= 0.6)),
         
         # ⚠️ AT RISK: 60-90 days inactive OR high churn risk
-        ((rfm['recency'] > 60) & (rfm['recency'] <= 90)) | (rfm.get('churn_score', 0) > 0.6),
+        ((rfm['recency'] > 60) & (rfm['recency'] <= 90)) | (rfm['churn_score'] > 0.6),
         
         # 💔 CHURNED: Over 90 days
         (rfm['recency'] > 90)
@@ -585,6 +589,36 @@ def generate_actions(rfm):
     rfm['recommended_action'] = actions
     rfm['priority'] = priorities
     return rfm
+
+# =====================================================
+# SAFE FORMATTING FUNCTIONS
+# =====================================================
+def safe_int_format(value):
+    """Safely format integer values"""
+    try:
+        if pd.isna(value) or value is None:
+            return "0"
+        return f"{int(round(float(value))):,}"
+    except:
+        return "0"
+
+def safe_currency_format(value):
+    """Safely format currency values"""
+    try:
+        if pd.isna(value) or value is None:
+            return "$0"
+        return f"${float(value):,.0f}"
+    except:
+        return "$0"
+
+def safe_percent_format(value):
+    """Safely format percentage values"""
+    try:
+        if pd.isna(value) or value is None:
+            return "0%"
+        return f"{float(value):.1f}%"
+    except:
+        return "0%"
 
 # =====================================================
 # AI ASSISTANT KNOWLEDGE BASE
@@ -726,7 +760,7 @@ else:
         alerts = generate_alerts(rfm)
         benchmarks = calculate_benchmarks(rfm)
         
-        # KPI CARDS
+        # KPI CARDS - Using safe formatting
         col1, col2, col3, col4 = st.columns(4)
         
         def card(title, value, icon=""):
@@ -737,20 +771,19 @@ else:
             </div>
             """, unsafe_allow_html=True)
         
-        # Calculate counts for KPI cards
+        # Calculate counts for KPI cards with safe values
         total_customers = len(rfm)
-        total_revenue = rfm['monetary'].sum()
-        avg_clv = rfm['clv'].mean()
+        total_revenue = safe_currency_format(rfm['monetary'].sum())
+        avg_clv = safe_currency_format(rfm['clv'].mean())
         at_risk_count = len(rfm[rfm['segment'] == '⚠️ At Risk'])
         warming_count = len(rfm[rfm['segment'] == '⚠️ Warming'])
-        churned_count = len(rfm[rfm['segment'] == '💔 Churned'])
         
         with col1:
             card("Total Customers", f"{total_customers:,}", "👥 ")
         with col2:
-            card("Total Revenue", f"${total_revenue:,.0f}", "💰 ")
+            card("Total Revenue", total_revenue, "💰 ")
         with col3:
-            card("Avg. CLV", f"${avg_clv:,.0f}", "💎 ")
+            card("Avg. CLV", avg_clv, "💎 ")
         with col4:
             card("At Risk / Warming", f"{at_risk_count} / {warming_count}", "⚠️ ")
         
@@ -849,9 +882,9 @@ else:
             with col1:
                 st.metric("Targetable Customers", f"{campaign_metrics['total_customers_targeted']:,}")
             with col2:
-                st.metric("At-Risk + Warming Revenue", f"${campaign_metrics['potential_revenue_at_risk']:,.0f}")
+                st.metric("At-Risk + Warming Revenue", safe_currency_format(campaign_metrics['potential_revenue_at_risk']))
             with col3:
-                st.metric("Est. Retention Value", f"${campaign_metrics['estimated_retention_value']:,.0f}")
+                st.metric("Est. Retention Value", safe_currency_format(campaign_metrics['estimated_retention_value']))
             
             # Show breakdown
             st.markdown("---")
@@ -873,23 +906,16 @@ else:
         with tab5:
             col1, col2 = st.columns(2)
             with col1:
-                for key, value in list(benchmarks.items())[:4]:
-                    if 'Rate' in key or 'Avg' in key:
-                        st.metric(key, f"{value:.1f}" if isinstance(value, float) else f"{value:,}")
-                    else:
-                        st.metric(key, f"${value:,.0f}" if 'Value' in key or 'CLV' in key else f"{value:,.0f}")
+                st.metric("Total Customers", f"{benchmarks['Total Customers']:,}")
+                st.metric("Avg Customer Value", safe_currency_format(benchmarks['Avg Customer Value']))
+                st.metric("Avg Frequency", f"{benchmarks['Avg Frequency']:.1f}")
+                st.metric("Avg Recency (days)", f"{benchmarks['Avg Recency (days)']:.1f}")
             
             with col2:
-                # Radar chart for health metrics
-                radar_data = dict(
-                    r=[benchmarks['Retention Rate'], 100 - benchmarks['Churn Rate'], 
-                       benchmarks['Active Rate (30 days)'], 
-                       min(100, benchmarks['Avg CLV'] / 1000 * 100)],
-                    theta=['Retention', 'Non-Churn', 'Active Rate', 'CLV Index']
-                )
-                fig = go.Figure(data=go.Scatterpolar(radar_data, fill='toself'))
-                fig.update_layout(polar=dict(radialaxis=dict(visible=True, range=[0,100])), height=400, showlegend=False)
-                st.plotly_chart(fig, use_container_width=True)
+                st.metric("Retention Rate", safe_percent_format(benchmarks['Retention Rate']))
+                st.metric("Churn Rate", safe_percent_format(benchmarks['Churn Rate']))
+                st.metric("Active Rate (30 days)", safe_percent_format(benchmarks['Active Rate (30 days)']))
+                st.metric("Avg CLV", safe_currency_format(benchmarks['Avg CLV']))
         
         # ACTION CENTER
         st.markdown("### 🎯 Action Center")
@@ -905,10 +931,11 @@ else:
             for idx, row in high_priority.iterrows():
                 # Color code by segment
                 bg_color = "#E31837" if row['segment'] == '⚠️ At Risk' else "#FF8C00"
+                monetary_val = safe_currency_format(row['monetary'])
                 st.markdown(f"""
                 <div class="action-card" style="background: linear-gradient(135deg, {bg_color} 0%, {bg_color}CC 100%);">
                     <h4>{row['recommended_action']}</h4>
-                    <p>👤 Member: {row['member_number']} | 💰 ${row['monetary']:,.0f} | ⏰ {row['recency']} days ago | 📊 {row['segment']} | 🎯 Risk: {row['churn_risk']}</p>
+                    <p>👤 Member: {row['member_number']} | 💰 {monetary_val} | ⏰ {int(row['recency'])} days ago | 📊 {row['segment']} | 🎯 Risk: {row['churn_risk']}</p>
                 </div>
                 """, unsafe_allow_html=True)
             if high_priority.empty:
@@ -919,10 +946,11 @@ else:
             st.markdown('<div class="card">', unsafe_allow_html=True)
             st.markdown(f"#### 🟡 Medium Priority Actions ({len(filtered_customers[filtered_customers['priority']=='Medium'])})")
             for idx, row in medium_priority.iterrows():
+                monetary_val = safe_currency_format(row['monetary'])
                 st.markdown(f"""
                 <div class="action-card" style="background: linear-gradient(135deg, {SPAR_GREEN} 0%, {SPAR_LIGHT_GREEN} 100%);">
                     <h4>{row['recommended_action']}</h4>
-                    <p>👤 Member: {row['member_number']} | 💰 ${row['monetary']:,.0f} | ⭐ {row['segment']} | 🎂 {row['age_group']}</p>
+                    <p>👤 Member: {row['member_number']} | 💰 {monetary_val} | ⭐ {row['segment']} | 🎂 {row['age_group']}</p>
                 </div>
                 """, unsafe_allow_html=True)
             if medium_priority.empty:
@@ -937,9 +965,11 @@ else:
                        'recency', 'frequency', 'monetary', 'avg_basket', 'risk_score', 'priority', 'recommended_action']
         
         display_df = filtered_customers[display_cols].copy()
-        display_df['monetary'] = display_df['monetary'].apply(lambda x: f"${x:,.2f}")
-        display_df['avg_basket'] = display_df['avg_basket'].apply(lambda x: f"${x:,.2f}")
-        display_df['recency'] = display_df['recency'].apply(lambda x: f"{x} days")
+        display_df['monetary'] = display_df['monetary'].apply(lambda x: safe_currency_format(x))
+        display_df['avg_basket'] = display_df['avg_basket'].apply(lambda x: safe_currency_format(x))
+        display_df['recency'] = display_df['recency'].apply(lambda x: f"{int(x)} days")
+        display_df['frequency'] = display_df['frequency'].apply(lambda x: f"{int(x)}")
+        display_df['risk_score'] = display_df['risk_score'].apply(lambda x: f"{int(x)}")
         
         st.dataframe(display_df, use_container_width=True, height=400)
         st.markdown('</div>', unsafe_allow_html=True)

@@ -402,11 +402,6 @@ def generate_alerts(rfm):
     if churned > 100:
         alerts.append(f"💔 ALERT: {churned} customers have churned (>90 days). Re-engagement campaign needed!")
     
-    # Alert 4: Champions growth opportunity
-    champions = len(rfm[rfm['segment'] == '👑 Champions'])
-    if champions < 10:
-        alerts.append(f"💡 OPPORTUNITY: Only {champions} champions. Focus on loyalty program to grow this segment.")
-    
     return alerts
 
 # =====================================================
@@ -484,83 +479,70 @@ def calculate_rfm(df):
         avg_basket=('basket_value', 'mean'),
         age_group=('age_group', 'first')
     )
-    try:
-        rfm['r_score'] = pd.qcut(rfm['recency'].rank(method='first'), 4, labels=[4,3,2,1])
-        rfm['f_score'] = pd.qcut(rfm['frequency'].rank(method='first'), 4, labels=[1,2,3,4])
-        rfm['m_score'] = pd.qcut(rfm['monetary'].rank(method='first'), 4, labels=[1,2,3,4])
-    except:
-        rfm['r_score'] = pd.cut(rfm['recency'], bins=4, labels=[4,3,2,1])
-        rfm['f_score'] = pd.cut(rfm['frequency'], bins=4, labels=[1,2,3,4])
-        rfm['m_score'] = pd.cut(rfm['monetary'], bins=4, labels=[1,2,3,4])
     return rfm
 
 # =====================================================
-# SEGMENTATION - FIXED WITH PROPER AT RISK LOGIC
+# SIMPLIFIED SEGMENTATION - BASED ONLY ON RECENCY
 # =====================================================
 def segment_customers(rfm):
     """
-    IMPROVED SEGMENTATION:
-    - Uses churn_score for risk assessment
-    - Adds 'Warming' stage (30-60 days)
-    - 'At Risk' for 60-90 days OR high churn_score
+    SIMPLIFIED 5-STEP SEGMENTATION (Recency Only):
+    Step 1: Active (0-30 days) → ⭐ Active
+    Step 2: Warming (31-60 days) → ⚠️ Warming  
+    Step 3: At Risk (61-90 days) → ⚠️ At Risk
+    Step 4: Churned (>90 days) → 💔 Churned
+    Step 5: One-Time (frequency=1, not captured above) → 🆕 One-Time
     """
-    # Ensure churn_score exists
-    if 'churn_score' not in rfm.columns:
-        rfm['churn_score'] = 0
+    # Initialize all as 'Other'
+    rfm['segment'] = '📊 Other'
     
-    conditions = [
-        # Champions: High RFM scores
-        (rfm['r_score'] >= 3) & (rfm['f_score'] >= 3) & (rfm['m_score'] >= 3),
-        
-        # Loyal: Good recency and frequency
-        (rfm['r_score'] >= 3) & (rfm['f_score'] >= 2),
-        
-        # Potential: Moderate engagement
-        (rfm['r_score'] >= 2) & (rfm['f_score'] >= 2),
-        
-        # One-Time: First purchase only
-        (rfm['frequency'] == 1),
-        
-        # ⚠️ WARMING: Early warning signs (30-60 days inactive) OR medium churn risk
-        ((rfm['recency'] > 30) & (rfm['recency'] <= 60)) | ((rfm['churn_score'] > 0.4) & (rfm['churn_score'] <= 0.6)),
-        
-        # ⚠️ AT RISK: 60-90 days inactive OR high churn risk
-        ((rfm['recency'] > 60) & (rfm['recency'] <= 90)) | (rfm['churn_score'] > 0.6),
-        
-        # 💔 CHURNED: Over 90 days
-        (rfm['recency'] > 90)
-    ]
+    # =============================================
+    # STEP 1: ACTIVE (0-30 days) - LOW PRIORITY
+    # =============================================
+    mask_active = (rfm['recency'] <= 30)
+    rfm.loc[mask_active, 'segment'] = "⭐ Active"
     
-    choices = [
-        "👑 Champions",      # Top tier
-        "⭐ Loyal",          # Regular customers
-        "🌱 Potential",      # Growing engagement
-        "🆕 One-Time",       # New/one-time buyers
-        "⚠️ Warming",        # NEW: Early risk signs (30-60 days or medium churn)
-        "⚠️ At Risk",        # FIXED: True at risk (60-90 days or high churn)
-        "💔 Churned"         # Lost customers
-    ]
+    # =============================================
+    # STEP 2: WARMING (31-60 days) - HIGH PRIORITY
+    # =============================================
+    mask_warming = (rfm['recency'] > 30) & (rfm['recency'] <= 60)
+    rfm.loc[mask_warming, 'segment'] = "⚠️ Warming"
     
-    # Use select with default for unmatched
-    rfm['segment'] = np.select(conditions, choices, default="📊 Others")
+    # =============================================
+    # STEP 3: AT RISK (61-90 days) - HIGH PRIORITY
+    # =============================================
+    mask_at_risk = (rfm['recency'] > 60) & (rfm['recency'] <= 90)
+    rfm.loc[mask_at_risk, 'segment'] = "⚠️ At Risk"
     
-    # Risk scoring based on segment
+    # =============================================
+    # STEP 4: CHURNED (>90 days) - HIGH PRIORITY
+    # =============================================
+    mask_churned = (rfm['recency'] > 90)
+    rfm.loc[mask_churned, 'segment'] = "💔 Churned"
+    
+    # =============================================
+    # STEP 5: ONE-TIME (frequency == 1, not already classified)
+    # =============================================
+    mask_one_time = (rfm['frequency'] == 1) & (rfm['segment'] == '📊 Other')
+    rfm.loc[mask_one_time, 'segment'] = "🆕 One-Time"
+    
+    # =============================================
+    # RISK SCORE based on segment
+    # =============================================
     risk_map = {
-        '👑 Champions': 0,
-        '⭐ Loyal': 10,
-        '🌱 Potential': 25,
-        '🆕 One-Time': 40,
+        '⭐ Active': 0,
         '⚠️ Warming': 60,
         '⚠️ At Risk': 80,
         '💔 Churned': 95,
-        '📊 Others': 50
+        '🆕 One-Time': 30,
+        '📊 Other': 50
     }
     rfm['risk_score'] = rfm['segment'].map(risk_map)
     
     return rfm
 
 # =====================================================
-# ACTION ENGINE - UPDATED FOR NEW SEGMENTS
+# SIMPLIFIED ACTION ENGINE - BASED ON RECENCY SEGMENTS
 # =====================================================
 def generate_actions(rfm):
     actions = []
@@ -579,11 +561,8 @@ def generate_actions(rfm):
         elif row['segment'] == '🆕 One-Time':
             actions.append("🎁 Welcome back incentive + loyalty program invite")
             priorities.append("Medium")
-        elif row['segment'] == '⭐ Loyal':
-            actions.append("🏆 Loyalty points bonus + referral program")
-            priorities.append("Medium")
-        elif row['segment'] == '👑 Champions':
-            actions.append("💎 VIP early access + exclusive events")
+        elif row['segment'] == '⭐ Active':
+            actions.append("🎉 Thank you for shopping! Check out our latest offers")
             priorities.append("Low")
         else:
             actions.append("📈 Nurture engagement with regular content")
@@ -628,7 +607,6 @@ def safe_day_format(day):
     try:
         if pd.isna(day) or day is None:
             return "01"
-        # Convert to int first, then format
         return f"{int(float(day)):02d}"
     except:
         return "01"
@@ -665,6 +643,9 @@ def get_data_response(question, rfm, df):
     elif 'warming' in q:
         warming = len(rfm[rfm['segment'] == '⚠️ Warming'])
         return f"⚡ **Warming Customers:** {warming} members inactive 30-60 days - intervene now!"
+    elif 'active' in q:
+        active = len(rfm[rfm['segment'] == '⭐ Active'])
+        return f"⭐ **Active Customers:** {active} members have shopped in the last 30 days"
     return None
 
 # =====================================================
@@ -734,7 +715,6 @@ else:
         col1, col2, col3 = st.columns(3)
         with col1:
             available_years = sorted(df['year'].unique(), reverse=True)
-            # Convert to int and filter out NaN
             available_years = [int(y) for y in available_years if pd.notna(y)]
             selected_years = st.multiselect("Select Year(s)", options=available_years, default=available_years if len(available_years) <= 3 else [available_years[0]], key="year_select")
         
@@ -742,13 +722,11 @@ else:
             months = {1: "January", 2: "February", 3: "March", 4: "April", 5: "May", 6: "June",
                       7: "July", 8: "August", 9: "September", 10: "October", 11: "November", 12: "December"}
             available_months = sorted(df['month'].unique())
-            # Convert to int and filter out NaN
             available_months = [int(m) for m in available_months if pd.notna(m)]
             selected_months = st.multiselect("Select Month(s)", options=available_months, default=available_months, format_func=lambda x: months.get(x, str(x)), key="month_select")
         
         with col3:
             available_days = sorted(df['day'].unique())
-            # Convert to int and filter out NaN
             available_days = [int(d) for d in available_days if pd.notna(d)]
             selected_days = st.multiselect("Select Day(s)", options=available_days, default=available_days, format_func=safe_day_format, key="day_select")
         
@@ -769,8 +747,8 @@ else:
         
         # Calculate all metrics (order matters now)
         rfm = calculate_rfm(filtered_df)
-        rfm = calculate_churn_probability(rfm)  # Calculate churn score FIRST
-        rfm = segment_customers(rfm)            # Then segment using churn_score
+        rfm = calculate_churn_probability(rfm)  # Calculate churn score (for info only)
+        rfm = segment_customers(rfm)            # Segment based ONLY on recency
         rfm = generate_actions(rfm)
         rfm = calculate_clv(rfm)
         rfm = rfm.reset_index()
@@ -846,7 +824,7 @@ else:
             seg_counts = filtered_customers['segment'].value_counts().reset_index()
             seg_counts.columns = ['Segment', 'Count']
             fig = px.pie(seg_counts, values='Count', names='Segment', 
-                         color_discrete_sequence=[SPAR_RED, SPAR_GREEN, '#FFB6C1', '#90EE90', '#FFA07A', '#D3D3D3', '#FF6B6B'],
+                         color_discrete_sequence=[SPAR_GREEN, SPAR_RED, '#FFA07A', '#D3D3D3', '#90EE90'],
                          hole=0.3)
             fig.update_layout(height=400)
             fig.update_traces(textposition='inside', textinfo='percent+label')
@@ -941,7 +919,7 @@ else:
         # ACTION CENTER
         st.markdown("### 🎯 Action Center")
         
-        high_priority = filtered_customers[filtered_customers['priority'] == 'High'].head(5)
+        high_priority = filtered_customers[filtered_customers['priority'] == 'High'].head(10)
         medium_priority = filtered_customers[filtered_customers['priority'] == 'Medium'].head(5)
         
         col1, col2 = st.columns(2)
@@ -951,12 +929,13 @@ else:
             st.markdown(f"#### 🔴 High Priority Actions ({len(filtered_customers[filtered_customers['priority']=='High'])})")
             for idx, row in high_priority.iterrows():
                 # Color code by segment
-                bg_color = "#E31837" if row['segment'] == '⚠️ At Risk' else "#FF8C00"
+                bg_color = SPAR_RED if row['segment'] == '⚠️ At Risk' else "#FF8C00"
                 monetary_val = safe_currency_format(row['monetary'])
+                recency_days = int(row['recency']) if not pd.isna(row['recency']) else 0
                 st.markdown(f"""
                 <div class="action-card" style="background: linear-gradient(135deg, {bg_color} 0%, {bg_color}CC 100%);">
                     <h4>{row['recommended_action']}</h4>
-                    <p>👤 Member: {row['member_number']} | 💰 {monetary_val} | ⏰ {int(row['recency'])} days ago | 📊 {row['segment']} | 🎯 Risk: {row['churn_risk']}</p>
+                    <p>👤 Member: {row['member_number']} | 💰 {monetary_val} | ⏰ {recency_days} days ago | 📊 {row['segment']}</p>
                 </div>
                 """, unsafe_allow_html=True)
             if high_priority.empty:
@@ -1006,27 +985,29 @@ else:
                               mime="text/csv", use_container_width=True)
         
         with col2:
-            high_priority_export = filtered_customers[filtered_customers['priority'] == 'High'][['member_number', 'monetary', 'segment', 'recommended_action', 'churn_risk']]
+            high_priority_export = filtered_customers[filtered_customers['priority'] == 'High'][['member_number', 'monetary', 'segment', 'recommended_action', 'recency']]
             if not high_priority_export.empty:
+                high_priority_export['recency'] = high_priority_export['recency'].apply(lambda x: f"{int(x)} days")
                 high_csv = high_priority_export.to_csv(index=False)
                 st.download_button("🚨 Export High Priority List", data=high_csv,
                                   file_name="high_priority_customers.csv", mime="text/csv", use_container_width=True)
         
         with col3:
             # Export at risk and warming specifically
-            risk_customers = filtered_customers[filtered_customers['segment'].isin(['⚠️ At Risk', '⚠️ Warming'])][['member_number', 'monetary', 'segment', 'recency', 'churn_risk']]
+            risk_customers = filtered_customers[filtered_customers['segment'].isin(['⚠️ At Risk', '⚠️ Warming'])][['member_number', 'monetary', 'segment', 'recency']]
             if not risk_customers.empty:
+                risk_customers['recency'] = risk_customers['recency'].apply(lambda x: f"{int(x)} days")
                 risk_csv = risk_customers.to_csv(index=False)
                 st.download_button("⚠️ Export At-Risk + Warming List", data=risk_csv,
                                   file_name="at_risk_warming_customers.csv", mime="text/csv", use_container_width=True)
         
-        # AI ASSISTANT IN SIDEBAR
+        # TANAKA ASSISTANT IN SIDEBAR
         with st.sidebar:
             st.markdown("---")
-            st.markdown("### 🤖 SPAR AI Assistant")
+            st.markdown("### 🤖 Tanaka AI Assistant")
             
             if "ai_messages" not in st.session_state:
-                st.session_state.ai_messages = [{"role": "assistant", "content": "👋 Hi! I'm your SPAR Rewards AI assistant. Ask me about SPAR Rewards or your data insights!"}]
+                st.session_state.ai_messages = [{"role": "assistant", "content": "👋 Hi! I'm Tanaka, your SPAR Rewards AI assistant. Ask me about SPAR Rewards or your data insights!"}]
             
             for msg in st.session_state.ai_messages[-5:]:
                 with st.chat_message(msg["role"]):
@@ -1039,7 +1020,7 @@ else:
                 if not response and 'rfm' in locals():
                     response = get_data_response(user_question, rfm, filtered_df)
                 if not response:
-                    response = "I can help with SPAR Rewards info or analyze your customer data! Try asking about segments, revenue, at risk customers, warming customers, or churned customers."
+                    response = "I can help with SPAR Rewards info or analyze your customer data! Try asking about segments, revenue, at risk customers, warming customers, active customers, or churned customers."
                 
                 st.session_state.ai_messages.append({"role": "assistant", "content": response})
                 st.rerun()
@@ -1049,7 +1030,7 @@ else:
     st.markdown(f"""
     <div style="text-align: center; padding: 20px;">
         <p style="color: #999; font-size: 12px;">
-        SPAR Rewards Intelligence Hub | © 2024 SPAR Zimbabwe | 
+        SPAR Rewards Intelligence Hub | © 2026 SPAR Zimbabwe | 
         <a href="https://www.spar.co.zw/rewards" target="_blank" style="color: {SPAR_RED};">Official Website</a>
         </p>
     </div>

@@ -34,8 +34,16 @@ def init_session_state():
         st.session_state.login_attempt = 0
     if 'chat_history' not in st.session_state:
         st.session_state.chat_history = []
-    if 'conversation_context' not in st.session_state:
-        st.session_state.conversation_context = {}
+    if 'show_segmentation_chart' not in st.session_state:
+        st.session_state.show_segmentation_chart = False
+    if 'show_age_chart' not in st.session_state:
+        st.session_state.show_age_chart = False
+    if 'show_clv_chart' not in st.session_state:
+        st.session_state.show_clv_chart = False
+    if 'show_churn_chart' not in st.session_state:
+        st.session_state.show_churn_chart = False
+    if 'show_monthly_chart' not in st.session_state:
+        st.session_state.show_monthly_chart = False
 
 init_session_state()
 
@@ -53,6 +61,13 @@ def login_form():
         /* Keep app background normal */
         .stApp {{
             background-color: #f6f7fb !important;
+        }}
+        
+        /* Better fonts */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        html, body, [class*="css"] {{
+            font-family: 'Inter', sans-serif;
         }}
         
         .compact-login-card {{
@@ -131,10 +146,19 @@ SPAR_GRAY = "#f6f7fb"
 SPAR_WHITE = "#FFFFFF"
 
 # =====================================================
-# MODERN UI STYLING
+# MODERN UI STYLING WITH BETTER FONTS
 # =====================================================
 st.markdown(f"""
 <style>
+    /* Import Google Fonts */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=SF+Pro+Display:wght@300;400;500;600;700&display=swap');
+    
+    /* Global font settings */
+    html, body, [class*="css"] {{
+        font-family: 'Inter', 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
+    }}
+    
     /* Main container */
     .main {{
         background-color: {SPAR_GRAY};
@@ -143,6 +167,13 @@ st.markdown(f"""
     .block-container {{
         padding-top: 1rem;
         padding-bottom: 2rem;
+    }}
+    
+    /* Headers with better fonts */
+    h1, h2, h3, h4, h5, h6 {{
+        font-family: 'Inter', 'SF Pro Display', sans-serif;
+        font-weight: 600;
+        letter-spacing: -0.02em;
     }}
     
     /* Centered Header styling */
@@ -157,8 +188,8 @@ st.markdown(f"""
     }}
     
     .header h1 {{
-        font-family: 'Arial', 'Helvetica', sans-serif;
-        font-weight: bold;
+        font-family: 'Inter', 'SF Pro Display', sans-serif;
+        font-weight: 800;
         font-size: 32px;
         margin-bottom: 5px;
         color: {SPAR_RED};
@@ -167,11 +198,12 @@ st.markdown(f"""
     }}
     
     .header p {{
-        font-family: 'Arial', 'Helvetica', sans-serif;
+        font-family: 'Inter', sans-serif;
         font-size: 14px;
         color: #666;
         margin-top: 5px;
         text-align: center;
+        font-weight: 400;
     }}
     
     /* Card styling */
@@ -181,7 +213,7 @@ st.markdown(f"""
         border-radius: 15px;
         box-shadow: 0px 2px 12px rgba(0,0,0,0.08);
         margin-bottom: 20px;
-        transition: transform 0.2s;
+        transition: transform 0.2s, box-shadow 0.2s;
     }}
     
     .card:hover {{
@@ -207,19 +239,20 @@ st.markdown(f"""
     }}
     
     .big-number {{
-        font-family: 'Arial', 'Helvetica', sans-serif;
-        font-weight: bold;
+        font-family: 'Inter', 'SF Pro Display', sans-serif;
+        font-weight: 800;
         font-size: 32px;
         color: {SPAR_RED};
         margin-bottom: 5px;
     }}
     
     .label {{
-        font-family: 'Arial', 'Helvetica', sans-serif;
+        font-family: 'Inter', sans-serif;
         font-size: 13px;
         color: #666;
         text-transform: uppercase;
         letter-spacing: 0.5px;
+        font-weight: 500;
     }}
     
     /* Action center styling */
@@ -233,8 +266,8 @@ st.markdown(f"""
     }}
     
     .action-card h4 {{
-        font-family: 'Arial', 'Helvetica', sans-serif;
-        font-weight: bold;
+        font-family: 'Inter', sans-serif;
+        font-weight: 700;
         margin: 0 0 5px 0;
         font-size: 14px;
     }}
@@ -243,6 +276,7 @@ st.markdown(f"""
         margin: 0;
         font-size: 12px;
         opacity: 0.9;
+        font-family: 'Inter', sans-serif;
     }}
     
     /* Sidebar styling */
@@ -255,8 +289,8 @@ st.markdown(f"""
         background-color: {SPAR_RED};
         color: white;
         border: none;
-        font-family: 'Arial', 'Helvetica', sans-serif;
-        font-weight: bold;
+        font-family: 'Inter', sans-serif;
+        font-weight: 600;
         border-radius: 8px;
         transition: all 0.3s;
     }}
@@ -267,9 +301,24 @@ st.markdown(f"""
         box-shadow: 0px 2px 8px rgba(227,24,55,0.3);
     }}
     
+    /* Expander styling for collapsible sections */
+    .streamlit-expanderHeader {{
+        font-family: 'Inter', sans-serif;
+        font-weight: 600;
+        background-color: {SPAR_WHITE};
+        border-radius: 10px;
+        border: 1px solid #e0e0e0;
+    }}
+    
+    .streamlit-expanderHeader:hover {{
+        background-color: {SPAR_GRAY};
+        border-color: {SPAR_RED};
+    }}
+    
     /* Dataframe styling */
     .dataframe {{
-        font-family: 'Arial', 'Helvetica', sans-serif;
+        font-family: 'Inter', monospace;
+        font-size: 13px;
     }}
     
     /* Filter section */
@@ -307,6 +356,7 @@ st.markdown(f"""
         margin-bottom: 10px;
         max-width: 85%;
         margin-left: auto;
+        font-family: 'Inter', sans-serif;
     }}
     
     .chat-message-assistant {{
@@ -317,6 +367,19 @@ st.markdown(f"""
         margin-bottom: 10px;
         max-width: 85%;
         border-left: 3px solid {SPAR_RED};
+        font-family: 'Inter', sans-serif;
+    }}
+    
+    /* Toggle button styling */
+    .toggle-btn {{
+        background-color: {SPAR_GREEN};
+        color: white;
+        padding: 8px 16px;
+        border-radius: 8px;
+        border: none;
+        cursor: pointer;
+        font-family: 'Inter', sans-serif;
+        font-weight: 500;
     }}
 </style>
 """, unsafe_allow_html=True)
@@ -336,6 +399,27 @@ def calculate_age_group(birthdate):
     elif age < 55: return "45-54"
     elif age < 65: return "55-64"
     else: return "65+"
+
+# =====================================================
+# MONTHLY PERFORMANCE METRICS
+# =====================================================
+@st.cache_data
+def calculate_monthly_performance(df):
+    """Calculate monthly revenue and customer metrics"""
+    df = df.copy()
+    df['year_month'] = df['redemption_date'].dt.strftime('%Y-%m')
+    
+    monthly_stats = df.groupby('year_month').agg(
+        revenue=('basket_value', 'sum'),
+        transactions=('member_number', 'count'),
+        unique_customers=('member_number', 'nunique'),
+        avg_basket=('basket_value', 'mean')
+    ).reset_index()
+    
+    # Sort by date
+    monthly_stats = monthly_stats.sort_values('year_month')
+    
+    return monthly_stats
 
 # =====================================================
 # CHURN PREDICTION - IMPROVED VERSION
@@ -724,6 +808,15 @@ class TanakaAssistant:
             active_rate = len(rfm[rfm['recency'] <= 30]) / len(rfm) * 100
             return f"✅ **Active Rate:** {active_rate:.1f}% of customers shopped in the last 30 days"
         
+        # Monthly performance
+        elif 'monthly' in q or 'trend' in q or 'performance' in q:
+            monthly_stats = calculate_monthly_performance(df)
+            if not monthly_stats.empty:
+                latest_month = monthly_stats.iloc[-1]
+                prev_month = monthly_stats.iloc[-2] if len(monthly_stats) > 1 else latest_month
+                growth = ((latest_month['revenue'] - prev_month['revenue']) / prev_month['revenue'] * 100) if prev_month['revenue'] > 0 else 0
+                return f"📈 **Monthly Performance:**\n- Latest month revenue: ${latest_month['revenue']:,.2f}\n- Month-over-month growth: {growth:+.1f}%\n- Active customers: {latest_month['unique_customers']:,}\n- Total transactions: {latest_month['transactions']:,}"
+        
         # Help and suggestions
         elif 'help' in q or 'what can you do' in q:
             return self.get_help_text()
@@ -731,7 +824,7 @@ class TanakaAssistant:
         return None
     
     def get_help_text(self):
-        return """🤖 **I can help you with:**\n\n**📊 Customer Insights**\n- Ask about active, at-risk, or churned customers\n- Check total revenue or average order value\n- Get CLV (Customer Lifetime Value) metrics\n\n**🎯 SPAR Rewards Info**\n- How to join the rewards program\n- How to earn and redeem points\n- Membership benefits and tiers\n\n**📈 Performance Metrics**\n- Retention and churn rates\n- Active customer rates\n- Segment breakdowns\n\n**💡 Try asking:**\n- "How many at risk customers do we have?"\n- "What's our total revenue?"\n- "How do I earn SPAR points?"\n- "Show me active customers"\n- "What's our retention rate?" """
+        return """🤖 **I can help you with:**\n\n**📊 Customer Insights**\n- Ask about active, at-risk, or churned customers\n- Check total revenue or average order value\n- Get CLV (Customer Lifetime Value) metrics\n\n**🎯 SPAR Rewards Info**\n- How to join the rewards program\n- How to earn and redeem points\n- Membership benefits and tiers\n\n**📈 Performance Metrics**\n- Retention and churn rates\n- Active customer rates\n- Monthly performance trends\n\n**💡 Try asking:**\n- "How many at risk customers do we have?"\n- "What's our total revenue?"\n- "How do I earn SPAR points?"\n- "Show me active customers"\n- "What's our monthly performance trend?" """
     
     def get_follow_up_suggestions(self, last_question, rfm):
         q = last_question.lower()
@@ -760,6 +853,12 @@ class TanakaAssistant:
                 "How can we win back churned customers?",
                 "Show me churned customers by segment",
                 "What's our current churn rate?"
+            ]
+        elif 'monthly' in q or 'trend' in q:
+            suggestions = [
+                "Show me the monthly performance chart",
+                "Which month had highest revenue?",
+                "What's the customer growth trend?"
             ]
         
         if suggestions:
@@ -821,7 +920,7 @@ else:
     with col3:
         if st.button("🚪 Logout", key="logout_button", use_container_width=True):
             st.session_state.authenticated = False
-            st.session_state.chat_history = []  # Clear chat history on logout
+            st.session_state.chat_history = []
             st.rerun()
     
     with col2:
@@ -907,6 +1006,9 @@ else:
             st.warning("⚠️ No data available for the selected date range.")
             st.stop()
         
+        # Calculate monthly performance
+        monthly_stats = calculate_monthly_performance(filtered_df)
+        
         # Calculate all metrics (order matters now)
         rfm = calculate_rfm(filtered_df)
         rfm = calculate_churn_probability(rfm)
@@ -950,6 +1052,71 @@ else:
         
         st.markdown("<br>", unsafe_allow_html=True)
         
+        # =====================================================
+        # MONTHLY PERFORMANCE LINE CHART (ALWAYS VISIBLE)
+        # =====================================================
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+        st.subheader("📈 Monthly Performance Trend")
+        
+        if not monthly_stats.empty:
+            # Create figure with secondary y-axis
+            fig = go.Figure()
+            
+            # Add revenue line
+            fig.add_trace(go.Scatter(
+                x=monthly_stats['year_month'],
+                y=monthly_stats['revenue'],
+                name='Revenue ($)',
+                line=dict(color=SPAR_RED, width=3),
+                marker=dict(size=8),
+                yaxis='y'
+            ))
+            
+            # Add unique customers line
+            fig.add_trace(go.Scatter(
+                x=monthly_stats['year_month'],
+                y=monthly_stats['unique_customers'],
+                name='Active Customers',
+                line=dict(color=SPAR_GREEN, width=3, dash='dash'),
+                marker=dict(size=8),
+                yaxis='y2'
+            ))
+            
+            # Update layout
+            fig.update_layout(
+                title="Monthly Revenue & Active Customer Trends",
+                xaxis_title="Month",
+                yaxis_title="Revenue ($)",
+                yaxis2=dict(
+                    title="Number of Customers",
+                    overlaying='y',
+                    side='right'
+                ),
+                hovermode='x unified',
+                height=450,
+                template='plotly_white',
+                legend=dict(
+                    orientation='h',
+                    yanchor='bottom',
+                    y=1.02,
+                    xanchor='right',
+                    x=1
+                )
+            )
+            
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # Show monthly stats table
+            with st.expander("📊 View Monthly Performance Details"):
+                display_stats = monthly_stats.copy()
+                display_stats['revenue'] = display_stats['revenue'].apply(lambda x: f"${x:,.2f}")
+                display_stats['avg_basket'] = display_stats['avg_basket'].apply(lambda x: f"${x:.2f}")
+                st.dataframe(display_stats, use_container_width=True)
+        else:
+            st.info("No monthly data available for the selected date range")
+        
+        st.markdown('</div>', unsafe_allow_html=True)
+        
         # CUSTOMER FILTERS
         st.markdown('<div class="filter-section">', unsafe_allow_html=True)
         st.markdown("### 🔍 Customer Filters")
@@ -977,53 +1144,118 @@ else:
         if age_filter:
             filtered_customers = filtered_customers[filtered_customers['age_group'].isin(age_filter)]
         
-        # CHARTS SECTION
-        col1, col2 = st.columns(2)
+        # =====================================================
+        # COLLAPSIBLE CHARTS SECTION
+        # =====================================================
+        st.markdown("### 📊 Visual Analytics")
+        st.markdown("*Click on any section below to view the chart*")
         
-        with col1:
-            st.markdown('<div class="card">', unsafe_allow_html=True)
-            st.subheader("📊 Customer Segments")
-            seg_counts = filtered_customers['segment'].value_counts().reset_index()
-            seg_counts.columns = ['Segment', 'Count']
-            fig = px.pie(seg_counts, values='Count', names='Segment', 
-                         color_discrete_sequence=[SPAR_GREEN, SPAR_RED, '#FFA07A', '#D3D3D3', '#90EE90'],
-                         hole=0.3)
-            fig.update_layout(height=400)
-            fig.update_traces(textposition='inside', textinfo='percent+label')
-            st.plotly_chart(fig, use_container_width=True)
-            st.markdown('</div>', unsafe_allow_html=True)
+        # Chart 1: Customer Segments
+        with st.expander("🍩 Customer Segments Distribution - Click to view"):
+            col1, col2 = st.columns([2, 1])
+            with col1:
+                seg_counts = filtered_customers['segment'].value_counts().reset_index()
+                seg_counts.columns = ['Segment', 'Count']
+                fig = px.pie(seg_counts, values='Count', names='Segment', 
+                             color_discrete_sequence=[SPAR_GREEN, SPAR_RED, '#FFA07A', '#D3D3D3', '#90EE90'],
+                             hole=0.3)
+                fig.update_layout(height=450, title="Customer Segments Distribution")
+                fig.update_traces(textposition='inside', textinfo='percent+label')
+                st.plotly_chart(fig, use_container_width=True)
+            with col2:
+                st.markdown(f"""
+                <div style="padding: 20px; background: {SPAR_GRAY}; border-radius: 10px;">
+                    <h4 style="color: {SPAR_RED}; margin-bottom: 15px;">Segment Insights</h4>
+                    <p><strong>⭐ Active:</strong> Recently engaged, low priority</p>
+                    <p><strong>⚠️ Warming:</strong> 30-60 days inactive, high priority</p>
+                    <p><strong>⚠️ At Risk:</strong> 61-90 days inactive, urgent</p>
+                    <p><strong>💔 Churned:</strong> 90+ days inactive, win-back needed</p>
+                    <p><strong>🆕 One-Time:</strong> First-time buyers, convert them!</p>
+                </div>
+                """, unsafe_allow_html=True)
         
-        with col2:
-            st.markdown('<div class="card">', unsafe_allow_html=True)
-            st.subheader("👥 Age Group Distribution")
-            age_counts = filtered_customers['age_group'].value_counts().reset_index()
-            age_counts.columns = ['Age Group', 'Count']
-            fig = px.bar(age_counts, x='Age Group', y='Count', title="Customers by Age Group",
-                        color_discrete_sequence=[SPAR_GREEN])
-            fig.update_layout(height=400, showlegend=False)
-            st.plotly_chart(fig, use_container_width=True)
-            st.markdown('</div>', unsafe_allow_html=True)
+        # Chart 2: Age Group Distribution
+        with st.expander("👥 Age Group Distribution - Click to view"):
+            col1, col2 = st.columns(2)
+            with col1:
+                age_counts = filtered_customers['age_group'].value_counts().reset_index()
+                age_counts.columns = ['Age Group', 'Count']
+                fig = px.bar(age_counts, x='Age Group', y='Count', title="Customers by Age Group",
+                            color_discrete_sequence=[SPAR_GREEN],
+                            text='Count')
+                fig.update_traces(textposition='outside')
+                fig.update_layout(height=450)
+                st.plotly_chart(fig, use_container_width=True)
+            with col2:
+                # At risk by age group
+                at_risk_by_age = filtered_customers[filtered_customers['segment'].isin(['⚠️ At Risk', '⚠️ Warming'])].groupby('age_group').size().reset_index(name='count')
+                if not at_risk_by_age.empty:
+                    fig = px.bar(at_risk_by_age, x='age_group', y='count',
+                                title="At-Risk Customers by Age Group",
+                                color_discrete_sequence=[SPAR_RED],
+                                text='count')
+                    fig.update_traces(textposition='outside')
+                    fig.update_layout(height=450)
+                    st.plotly_chart(fig, use_container_width=True)
+                else:
+                    st.info("No at-risk customers in selected data")
+        
+        # Chart 3: CLV Distribution
+        with st.expander("💰 Customer Lifetime Value Distribution - Click to view"):
+            col1, col2 = st.columns(2)
+            with col1:
+                fig = px.histogram(filtered_customers, x='clv', nbins=30, 
+                                  title="CLV Distribution",
+                                  color_discrete_sequence=[SPAR_GREEN],
+                                  labels={'clv': 'Customer Lifetime Value ($)', 'count': 'Number of Customers'})
+                fig.update_layout(height=450)
+                st.plotly_chart(fig, use_container_width=True)
+            with col2:
+                # CLV by segment
+                clv_by_segment = filtered_customers.groupby('segment')['clv'].mean().reset_index()
+                fig = px.bar(clv_by_segment, x='segment', y='clv', 
+                            title="Average CLV by Segment",
+                            color_discrete_sequence=[SPAR_RED],
+                            labels={'clv': 'Avg CLV ($)', 'segment': 'Customer Segment'})
+                fig.update_layout(height=450)
+                st.plotly_chart(fig, use_container_width=True)
+        
+        # Chart 4: Churn Risk Distribution
+        with st.expander("📊 Churn Risk Analysis - Click to view"):
+            col1, col2 = st.columns(2)
+            with col1:
+                churn_dist = filtered_customers['churn_risk'].value_counts().reset_index()
+                churn_dist.columns = ['Risk Level', 'Count']
+                fig = px.bar(churn_dist, x='Risk Level', y='Count', 
+                            title="Churn Risk Distribution",
+                            color='Risk Level',
+                            color_discrete_map={'Very Low Risk': SPAR_GREEN, 'Low Risk': '#90EE90', 
+                                               'Medium Risk': '#FFA500', 'High Risk': SPAR_RED})
+                fig.update_layout(height=450)
+                st.plotly_chart(fig, use_container_width=True)
+            with col2:
+                # Risk score distribution
+                risk_dist = filtered_customers['risk_score'].value_counts().sort_index().reset_index()
+                risk_dist.columns = ['Risk Score', 'Count']
+                fig = px.bar(risk_dist, x='Risk Score', y='Count', 
+                            title="Risk Score Distribution (0-100)",
+                            color_discrete_sequence=[SPAR_RED])
+                fig.update_layout(height=450)
+                st.plotly_chart(fig, use_container_width=True)
         
         # INTELLIGENCE HUB WITH 5 TABS
         st.markdown("### 🧠 Intelligence Hub")
         
-        tab1, tab2, tab3, tab4, tab5 = st.tabs(["📊 CLV & Churn", "⏰ Time Patterns", "🎯 Campaign ROI", "🚨 Alerts", "📈 Benchmarks"])
+        tab1, tab2, tab3, tab4, tab5 = st.tabs(["📊 CLV & Churn Details", "⏰ Time Patterns", "🎯 Campaign ROI", "🚨 Alerts", "📈 Benchmarks"])
         
         with tab1:
             col1, col2 = st.columns(2)
             with col1:
-                fig = px.histogram(filtered_customers, x='clv', nbins=30, title="Customer Lifetime Value Distribution",
-                                  color_discrete_sequence=[SPAR_GREEN])
-                fig.update_layout(height=400)
-                st.plotly_chart(fig, use_container_width=True)
+                st.metric("Average CLV", safe_currency_format(benchmarks['Avg CLV']))
+                st.metric("High Value Customers (Platinum)", f"{campaign_metrics['high_value_customers']:,}")
             with col2:
-                # Show churn risk distribution
-                churn_dist = filtered_customers['churn_risk'].value_counts().reset_index()
-                churn_dist.columns = ['Churn Risk', 'Count']
-                fig = px.bar(churn_dist, x='Churn Risk', y='Count', title="Churn Risk Distribution",
-                            color_discrete_sequence=[SPAR_RED])
-                fig.update_layout(height=400)
-                st.plotly_chart(fig, use_container_width=True)
+                st.metric("Total CLV Value", safe_currency_format(filtered_customers['clv'].sum()))
+                st.metric("Median CLV", safe_currency_format(filtered_customers['clv'].median()))
         
         with tab2:
             col1, col2 = st.columns(2)
@@ -1047,7 +1279,6 @@ else:
             with col3:
                 st.metric("Est. Retention Value", safe_currency_format(campaign_metrics['estimated_retention_value']))
             
-            # Show breakdown
             st.markdown("---")
             st.markdown("#### 🎯 Segmentation Breakdown")
             seg_breakdown = filtered_customers['segment'].value_counts()
@@ -1209,7 +1440,7 @@ else:
                 "How many at risk customers?",
                 "What's our total revenue?",
                 "How do I earn SPAR points?",
-                "Show me active customers"
+                "Show me monthly performance"
             ]
             
             for q in quick_questions:

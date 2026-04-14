@@ -6,6 +6,7 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import io
 import hashlib
+import re
 
 # =====================================================
 # PAGE CONFIG
@@ -31,6 +32,10 @@ def init_session_state():
         st.session_state.authenticated = False
     if 'login_attempt' not in st.session_state:
         st.session_state.login_attempt = 0
+    if 'chat_history' not in st.session_state:
+        st.session_state.chat_history = []
+    if 'conversation_context' not in st.session_state:
+        st.session_state.conversation_context = {}
 
 init_session_state()
 
@@ -291,6 +296,27 @@ st.markdown(f"""
         background: linear-gradient(135deg, {SPAR_WHITE} 0%, {SPAR_GRAY} 100%);
         border-radius: 20px;
         margin-top: 50px;
+    }}
+    
+    /* Chat message styling */
+    .chat-message-user {{
+        background-color: {SPAR_RED};
+        color: white;
+        padding: 10px 15px;
+        border-radius: 15px;
+        margin-bottom: 10px;
+        max-width: 85%;
+        margin-left: auto;
+    }}
+    
+    .chat-message-assistant {{
+        background-color: {SPAR_WHITE};
+        color: #333;
+        padding: 10px 15px;
+        border-radius: 15px;
+        margin-bottom: 10px;
+        max-width: 85%;
+        border-left: 3px solid {SPAR_RED};
     }}
 </style>
 """, unsafe_allow_html=True)
@@ -612,41 +638,176 @@ def safe_day_format(day):
         return "01"
 
 # =====================================================
-# AI ASSISTANT KNOWLEDGE BASE
+# TANAKA AI ASSISTANT - ENHANCED WITH CONTEXT MEMORY
 # =====================================================
-def get_spar_info_response(question):
-    q = question.lower()
-    if 'spar rewards' in q or 'what is spar' in q:
-        return "🎯 **SPAR Rewards** is a customer loyalty program offering points on purchases, exclusive discounts, and birthday rewards. Join free at any SPAR store!"
-    elif 'how to join' in q or 'sign up' in q:
-        return "📝 **Join SPAR Rewards:** Visit any SPAR store, fill registration form, receive member number, start earning points instantly!"
-    elif 'earn points' in q:
-        return "⭐ **Earn points:** 1 point per $1 spent, double points on birthdays, bonus points on promotions!"
-    elif 'redeem' in q:
-        return "🎁 **Redeem points:** 100 points = $5 voucher, 500 points = $30 voucher. Ask cashier to check balance!"
-    else:
-        return None
 
-def get_data_response(question, rfm, df):
-    q = question.lower()
-    if 'total customers' in q:
-        return f"👥 **Total Customers:** {len(rfm):,} members"
-    elif 'total revenue' in q:
-        return f"💰 **Total Revenue:** ${rfm['monetary'].sum():,.2f}"
-    elif 'at risk' in q:
-        at_risk = len(rfm[rfm['segment'] == '⚠️ At Risk'])
-        warming = len(rfm[rfm['segment'] == '⚠️ Warming'])
-        return f"⚠️ **At Risk Customers:** {at_risk} members need urgent attention\n⚡ **Warming Up:** {warming} members showing early warning signs"
-    elif 'churned' in q:
-        churned = len(rfm[rfm['segment'] == '💔 Churned'])
-        return f"💔 **Churned Customers:** {churned} members have stopped engaging (>90 days)"
-    elif 'warming' in q:
-        warming = len(rfm[rfm['segment'] == '⚠️ Warming'])
-        return f"⚡ **Warming Customers:** {warming} members inactive 30-60 days - intervene now!"
-    elif 'active' in q:
-        active = len(rfm[rfm['segment'] == '⭐ Active'])
-        return f"⭐ **Active Customers:** {active} members have shopped in the last 30 days"
-    return None
+class TanakaAssistant:
+    """SPAR AI Assistant with conversation memory and multiple response handling"""
+    
+    def __init__(self):
+        self.name = "Tanaka"
+        self.context = {}
+        
+    def get_greeting(self):
+        greetings = [
+            f"👋 Hi! I'm {self.name}, your SPAR Rewards AI assistant. How can I help you today?",
+            f"🎯 Hello! {self.name} here. Ready to analyze your customer data and SPAR Rewards insights!",
+            f"📊 Welcome! I'm {self.name}. Ask me anything about your customers, rewards program, or retention strategies!"
+        ]
+        return np.random.choice(greetings)
+    
+    def get_spar_info_response(self, question):
+        q = question.lower()
+        
+        spar_info = {
+            'spar rewards': "🎯 **SPAR Rewards Program**\n\n- Earn 1 point per $1 spent\n- Double points on your birthday\n- Exclusive member discounts\n- Birthday rewards\n- Join free at any SPAR store!",
+            'how to join': "📝 **How to Join SPAR Rewards:**\n\n1. Visit any SPAR store near you\n2. Fill out the registration form\n3. Receive your member number\n4. Start earning points instantly!\n\nIt's completely FREE!",
+            'earn points': "⭐ **How to Earn Points:**\n\n- 1 point per $1 spent\n- 2x points on your birthday month\n- Bonus points on promotional items\n- Referral bonuses for friends who join",
+            'redeem': "🎁 **How to Redeem Points:**\n\n- 100 points = $5 voucher\n- 500 points = $30 voucher\n- 1000 points = $70 voucher\n\nJust ask the cashier to check your balance at checkout!",
+            'benefits': "✨ **SPAR Rewards Benefits:**\n\n- 🎂 Birthday rewards\n- 💰 Exclusive discounts\n- 🎯 Personalized offers\n- 🏆 Loyalty bonuses\n- 📱 Digital member card",
+            'tiers': "🏆 **Membership Tiers:**\n\n- Bronze: 0-500 points\n- Silver: 501-1000 points  \n- Gold: 1001-2000 points\n- Platinum: 2000+ points\n\nHigher tiers = better rewards!"
+        }
+        
+        for key, response in spar_info.items():
+            if key in q:
+                return response
+        return None
+    
+    def get_data_response(self, question, rfm, df):
+        q = question.lower()
+        
+        # Customer counts by segment
+        if 'active customers' in q or 'active members' in q:
+            active = len(rfm[rfm['segment'] == '⭐ Active'])
+            return f"👥 **Active Customers:** {active:,} members have shopped in the last 30 days"
+        
+        elif 'at risk' in q and 'warming' not in q:
+            at_risk = len(rfm[rfm['segment'] == '⚠️ At Risk'])
+            return f"⚠️ **At Risk Customers:** {at_risk:,} members haven't shopped in 60-90 days. They need urgent attention!"
+        
+        elif 'warming' in q:
+            warming = len(rfm[rfm['segment'] == '⚠️ Warming'])
+            return f"⚡ **Warming Customers:** {warming:,} members inactive for 30-60 days. Time to re-engage them!"
+        
+        elif 'churned' in q:
+            churned = len(rfm[rfm['segment'] == '💔 Churned'])
+            return f"💔 **Churned Customers:** {churned:,} members haven't shopped in over 90 days. A win-back campaign could help!"
+        
+        elif 'one time' in q or 'one-time' in q:
+            one_time = len(rfm[rfm['segment'] == '🆕 One-Time'])
+            return f"🆕 **One-Time Customers:** {one_time:,} members made only one purchase. Time to convert them into repeat buyers!"
+        
+        # Revenue metrics
+        elif 'total revenue' in q or 'total sales' in q:
+            total_rev = rfm['monetary'].sum()
+            return f"💰 **Total Revenue:** ${total_rev:,.2f} from all customers"
+        
+        elif 'average order' in q or 'avg basket' in q:
+            avg_basket = rfm['avg_basket'].mean()
+            return f"🛒 **Average Basket Value:** ${avg_basket:.2f} per transaction"
+        
+        elif 'clv' in q or 'lifetime value' in q:
+            avg_clv = rfm['clv'].mean()
+            high_clv = rfm[rfm['clv_segment'] == 'Platinum']['clv'].count() if 'clv_segment' in rfm.columns else 0
+            return f"💎 **Customer Lifetime Value:**\n- Average CLV: ${avg_clv:.2f}\n- Platinum members: {high_clv:,} high-value customers"
+        
+        # Performance metrics
+        elif 'retention' in q or 'retention rate' in q:
+            retention = len(rfm[rfm['frequency'] > 1]) / len(rfm) * 100
+            return f"📈 **Retention Rate:** {retention:.1f}% of customers have made multiple purchases"
+        
+        elif 'churn rate' in q:
+            churn_rate = len(rfm[rfm['segment'] == '💔 Churned']) / len(rfm) * 100
+            return f"⚠️ **Churn Rate:** {churn_rate:.1f}% of customers have stopped engaging"
+        
+        elif 'active rate' in q:
+            active_rate = len(rfm[rfm['recency'] <= 30]) / len(rfm) * 100
+            return f"✅ **Active Rate:** {active_rate:.1f}% of customers shopped in the last 30 days"
+        
+        # Help and suggestions
+        elif 'help' in q or 'what can you do' in q:
+            return self.get_help_text()
+        
+        return None
+    
+    def get_help_text(self):
+        return """🤖 **I can help you with:**\n\n**📊 Customer Insights**\n- Ask about active, at-risk, or churned customers\n- Check total revenue or average order value\n- Get CLV (Customer Lifetime Value) metrics\n\n**🎯 SPAR Rewards Info**\n- How to join the rewards program\n- How to earn and redeem points\n- Membership benefits and tiers\n\n**📈 Performance Metrics**\n- Retention and churn rates\n- Active customer rates\n- Segment breakdowns\n\n**💡 Try asking:**\n- "How many at risk customers do we have?"\n- "What's our total revenue?"\n- "How do I earn SPAR points?"\n- "Show me active customers"\n- "What's our retention rate?" """
+    
+    def get_follow_up_suggestions(self, last_question, rfm):
+        q = last_question.lower()
+        suggestions = []
+        
+        if 'at risk' in q:
+            suggestions = [
+                "Show me at risk customers by age group",
+                "What's the revenue at risk?",
+                "How can we re-engage warming customers?"
+            ]
+        elif 'revenue' in q or 'sales' in q:
+            suggestions = [
+                "Show revenue by customer segment",
+                "What's the average order value?",
+                "Which segment generates most revenue?"
+            ]
+        elif 'active' in q:
+            suggestions = [
+                "What's the retention rate?",
+                "Show me active customers by age group",
+                "How many one-time customers do we have?"
+            ]
+        elif 'churned' in q:
+            suggestions = [
+                "How can we win back churned customers?",
+                "Show me churned customers by segment",
+                "What's our current churn rate?"
+            ]
+        
+        if suggestions:
+            return "\n\n💡 **Follow-up questions you might like:**\n" + "\n".join([f"   • {s}" for s in suggestions])
+        return ""
+    
+    def get_response(self, question, rfm=None, df=None):
+        """Main response handler with multiple response types and context"""
+        if not question:
+            return self.get_greeting()
+        
+        question_lower = question.lower()
+        
+        # Check for greetings
+        if any(greeting in question_lower for greeting in ['hi', 'hello', 'hey', 'good morning', 'good afternoon']):
+            greetings = [
+                f"👋 Hello! {self.name} here, ready to help with your SPAR Rewards data!",
+                f"🎯 Hi there! I'm {self.name}. What would you like to know about your customers today?",
+                f"📊 Hey! {self.name} at your service. Ask me anything about your analytics!"
+            ]
+            return np.random.choice(greetings)
+        
+        # Check for thank you
+        if any(word in question_lower for word in ['thank', 'thanks', 'appreciate']):
+            return f"😊 You're welcome! I'm {self.name}, always happy to help. Any other questions about your data?"
+        
+        # Check for bye
+        if any(word in question_lower for word in ['bye', 'goodbye', 'see you']):
+            return f"👋 Goodbye! {self.name} signing off. Come back anytime you need insights about your SPAR Rewards data!"
+        
+        # Get response from SPAR info
+        response = self.get_spar_info_response(question)
+        if response:
+            return response
+        
+        # Get response from data (if rfm is available)
+        if rfm is not None:
+            response = self.get_data_response(question, rfm, df)
+            if response:
+                # Add follow-up suggestions
+                follow_up = self.get_follow_up_suggestions(question, rfm)
+                return response + follow_up
+        
+        # Default response with help
+        return f"🤔 I'm not sure about that, {self.name} here. {self.get_help_text()}"
+
+# Initialize Tanaka
+tanaka = TanakaAssistant()
 
 # =====================================================
 # MAIN APP - Only show if authenticated
@@ -660,6 +821,7 @@ else:
     with col3:
         if st.button("🚪 Logout", key="logout_button", use_container_width=True):
             st.session_state.authenticated = False
+            st.session_state.chat_history = []  # Clear chat history on logout
             st.rerun()
     
     with col2:
@@ -747,8 +909,8 @@ else:
         
         # Calculate all metrics (order matters now)
         rfm = calculate_rfm(filtered_df)
-        rfm = calculate_churn_probability(rfm)  # Calculate churn score (for info only)
-        rfm = segment_customers(rfm)            # Segment based ONLY on recency
+        rfm = calculate_churn_probability(rfm)
+        rfm = segment_customers(rfm)
         rfm = generate_actions(rfm)
         rfm = calculate_clv(rfm)
         rfm = rfm.reset_index()
@@ -928,7 +1090,6 @@ else:
             st.markdown('<div class="card">', unsafe_allow_html=True)
             st.markdown(f"#### 🔴 High Priority Actions ({len(filtered_customers[filtered_customers['priority']=='High'])})")
             for idx, row in high_priority.iterrows():
-                # Color code by segment
                 bg_color = SPAR_RED if row['segment'] == '⚠️ At Risk' else "#FF8C00"
                 monetary_val = safe_currency_format(row['monetary'])
                 recency_days = int(row['recency']) if not pd.isna(row['recency']) else 0
@@ -1001,36 +1162,69 @@ else:
                 st.download_button("⚠️ Export At-Risk + Warming List", data=risk_csv,
                                   file_name="at_risk_warming_customers.csv", mime="text/csv", use_container_width=True)
         
-        # TANAKA ASSISTANT IN SIDEBAR
+        # TANAKA AI ASSISTANT IN SIDEBAR
         with st.sidebar:
             st.markdown("---")
-            st.markdown("### 🤖 Tanaka AI Assistant")
+            st.markdown(f"### 🤖 Meet {tanaka.name} - Your AI Assistant")
+            st.markdown(f"<p style='font-size:12px; color:#666;'>Ask {tanaka.name} anything about SPAR Rewards or your customer data!</p>", unsafe_allow_html=True)
             
-            if "ai_messages" not in st.session_state:
-                st.session_state.ai_messages = [{"role": "assistant", "content": "👋 Hi! I'm Tanaka, your SPAR Rewards AI assistant. Ask me about SPAR Rewards or your data insights!"}]
-            
-            for msg in st.session_state.ai_messages[-5:]:
-                with st.chat_message(msg["role"]):
-                    st.markdown(msg["content"])
-            
-            if user_question := st.chat_input("Ask me anything...", key="chat_input"):
-                st.session_state.ai_messages.append({"role": "user", "content": user_question})
-                
-                response = get_spar_info_response(user_question)
-                if not response and 'rfm' in locals():
-                    response = get_data_response(user_question, rfm, filtered_df)
-                if not response:
-                    response = "I can help with SPAR Rewards info or analyze your customer data! Try asking about segments, revenue, at risk customers, warming customers, active customers, or churned customers."
-                
-                st.session_state.ai_messages.append({"role": "assistant", "content": response})
+            # Clear chat button
+            if st.button("🗑️ Clear Chat", key="clear_chat", use_container_width=True):
+                st.session_state.chat_history = []
                 st.rerun()
+            
+            st.markdown("---")
+            
+            # Display chat history
+            chat_container = st.container()
+            with chat_container:
+                for msg in st.session_state.chat_history[-10:]:  # Show last 10 messages
+                    if msg["role"] == "user":
+                        st.markdown(f"<div class='chat-message-user'><strong>You:</strong><br>{msg['content']}</div>", unsafe_allow_html=True)
+                    else:
+                        st.markdown(f"<div class='chat-message-assistant'><strong>🧠 {tanaka.name}:</strong><br>{msg['content']}</div>", unsafe_allow_html=True)
+            
+            # Chat input
+            st.markdown("---")
+            user_question = st.chat_input(f"Ask {tanaka.name} a question...", key="tanaka_chat_input")
+            
+            if user_question:
+                # Add user message to history
+                st.session_state.chat_history.append({"role": "user", "content": user_question})
+                
+                # Get response from Tanaka
+                response = tanaka.get_response(user_question, rfm, filtered_df)
+                
+                # Add assistant response to history
+                st.session_state.chat_history.append({"role": "assistant", "content": response})
+                
+                # Rerun to update chat display
+                st.rerun()
+            
+            # Quick questions buttons
+            st.markdown("---")
+            st.markdown("#### 💡 Quick Questions")
+            
+            quick_questions = [
+                "How many at risk customers?",
+                "What's our total revenue?",
+                "How do I earn SPAR points?",
+                "Show me active customers"
+            ]
+            
+            for q in quick_questions:
+                if st.button(q, key=f"quick_{q[:20]}", use_container_width=True):
+                    st.session_state.chat_history.append({"role": "user", "content": q})
+                    response = tanaka.get_response(q, rfm, filtered_df)
+                    st.session_state.chat_history.append({"role": "assistant", "content": response})
+                    st.rerun()
     
     # Footer
     st.markdown("---")
     st.markdown(f"""
     <div style="text-align: center; padding: 20px;">
         <p style="color: #999; font-size: 12px;">
-        SPAR Rewards Intelligence Hub | © 2026 SPAR Zimbabwe | 
+        SPAR Rewards Intelligence Hub | © 2024 SPAR Zimbabwe | 
         <a href="https://www.spar.co.zw/rewards" target="_blank" style="color: {SPAR_RED};">Official Website</a>
         </p>
     </div>
